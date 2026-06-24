@@ -4,13 +4,31 @@
 
 **a. Initial design**
 
-- Briefly describe your initial UML design.
-- What classes did you include, and what responsibilities did you assign to each?
+My initial UML centered on four classes:
+
+- **Owner** — the person using the app. Holds basic info, preferences, and the time available in a day. Owns one or more `Pet`s.
+- **Pet** — basic identity (name, species, breed, age) plus the list of care `Task`s that belong to it. Responsible for managing its own tasks (`add_task()` / `remove_task()`).
+- **Task** — a single care activity with a `duration` and a `priority`. This was the data the scheduler would sort and filter on.
+- **Schedule** — the planner and the output. Given an owner's tasks and time budget, `generate()` would sort tasks by priority, drop the ones that didn't fit the available time, and produce an ordered daily plan it could also explain.
+
+The core relationships were Owner → many Pets → many Tasks, with Schedule consuming the tasks to produce a daily plan. My first version was deliberately simple: a single time budget (total minutes), tasks ordered purely by priority and duration, and no notion of specific times of day — so conflicts couldn't happen yet. I kept `Task`, `Pet`, and `Owner` as dataclasses to cut boilerplate and concentrated the real logic in `Schedule`.
 
 **b. Design changes**
 
-- Did your design change during implementation?
-- If yes, describe at least one change and why you made it.
+Yes — the design evolved in two significant ways as I thought through real usage.
+
+1. **Single time budget → a full timeline.** I originally gave the owner a single "available minutes" number. Once I decided tasks could have a `preferred_time` (e.g. a morning walk at 08:00), a flat budget wasn't enough — I needed to know *when* the day starts and ends. So `Owner` gained `day_start` and `day_end`, and I standardized on storing all times as minutes-since-midnight (ints) to keep the slot arithmetic simple.
+
+2. **No conflicts → honor preferred times and bump on clash.** Supporting multiple pets for one owner meant tasks from different pets compete for the same day and could want the same time slot. I extended `Schedule.generate()` into phases: place tasks with preferred times first (resolving clashes by priority via `_resolve_clash()`), then fill the remaining gaps with the untimed tasks. To make this honest for the user, I added a `dropped` list so the plan can show what *didn't* fit and why, rather than silently discarding tasks. I also added a `pet` back-reference on `Task` so a task can still be identified after being pooled across all of the owner's pets.
+
+A review of the skeleton (before writing any logic) surfaced several refinements I folded in while the changes were still cheap:
+
+- **Made `generate()` idempotent.** It now clears `entries` and `dropped` at the start, so the repeated calls a Streamlit app makes on every rerun rebuild the plan instead of accumulating duplicate entries.
+- **Extracted a shared `_first_free_gap()` helper.** Both anchored placement (for bumped tasks) and gap-filling need the same "where does a task of this duration fit without overlapping?" interval math, so I centralized it in one method rather than duplicating it.
+- **Changed `_resolve_clash()` to return `(winner, loser)`** instead of just the winner. The earlier signature threw away the bumped task, but the loser needs to flow back into the gap-fill pool, so the caller now receives both.
+- **Pinned a deterministic tie-break** in `_sort_tasks()`: priority (desc), then duration (asc), then insertion order. Without a fully specified order, identical inputs could produce different plans and make tests flaky.
+- **Tightened the `Task`/`Pet` back-reference contract** so `add_task()` is the only thing that sets `task.pet` and `remove_task()` clears it, preventing dangling references.
+- **Scoped recurrence to "daily" for now**, since "weekly" needs an anchor date that the model doesn't yet carry — documented as a deliberate limitation rather than a half-working feature.
 
 ---
 

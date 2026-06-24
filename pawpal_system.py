@@ -30,7 +30,12 @@ class Task:
         raise NotImplementedError
 
     def is_due_today(self, day: date) -> bool:
-        """Whether this task should run on the given day (recurrence aware)."""
+        """Whether this task should run on the given day.
+
+        For now only "daily" (and None == every day) is supported; "weekly"
+        needs an anchor (a start_date/weekday on Task) and is out of scope until
+        that field exists.
+        """
         raise NotImplementedError
 
 
@@ -44,11 +49,14 @@ class Pet:
     tasks: list[Task] = field(default_factory=list)
 
     def add_task(self, task: Task) -> None:
-        """Attach a task to this pet (sets the task's pet back-reference)."""
+        """Attach a task to this pet. MUST set task.pet = self so the task stays
+        attributable after Schedule pools tasks across pets. This is the only
+        supported way to set a task's pet back-reference."""
         raise NotImplementedError
 
     def remove_task(self, task: Task) -> None:
-        """Detach a task from this pet."""
+        """Detach a task from this pet and clear task.pet (avoid a dangling
+        back-reference to a pet that no longer lists the task)."""
         raise NotImplementedError
 
     def tasks_by_priority(self) -> list[Task]:
@@ -61,7 +69,7 @@ class Owner:
     name: str
     day_start: int = 7 * 60                 # 07:00
     day_end: int = 21 * 60                  # 21:00
-    preferences: dict = field(default_factory=dict)
+    preferences: dict = field(default_factory=dict)  # reserved (README "owner preferences"); not yet consumed by Schedule
     pets: list[Pet] = field(default_factory=list)
 
     def add_pet(self, pet: Pet) -> None:
@@ -85,27 +93,50 @@ class Schedule:
     dropped: list[Task] = field(default_factory=list)                   # didn't fit / bumped out
 
     def generate(self) -> None:
-        """Build the daily plan: collect -> sort -> place anchored -> fill gaps -> drop overflow."""
+        """Build the daily plan: collect -> sort -> place anchored -> fill gaps -> drop overflow.
+
+        Idempotent: clears self.entries and self.dropped first, so repeated calls
+        (e.g. on every Streamlit rerun) rebuild the plan instead of accumulating
+        duplicates.
+        """
         raise NotImplementedError
 
     def _collect_tasks(self) -> list[Task]:
-        """Gather all due tasks from the owner's pets into one pool."""
+        """Gather all due tasks from the owner's pets into one pool.
+
+        Every pooled task must have task.pet set (guaranteed by Pet.add_task);
+        assert this so a task added by some other path can't go unattributable.
+        """
         raise NotImplementedError
 
     def _sort_tasks(self, tasks: list[Task]) -> list[Task]:
-        """Order tasks by priority (desc), then duration. Tie-break documented in generate()."""
+        """Deterministic ordering: priority (desc), then duration (asc), then
+        insertion order (stable sort) as the final tie-break — so identical
+        inputs always produce the same plan (tests depend on this)."""
+        raise NotImplementedError
+
+    def _first_free_gap(self, duration: int, after: int) -> Optional[int]:
+        """Earliest start time >= `after` where a `duration`-minute task fits
+        without overlapping an existing entry or running past owner.day_end.
+        Returns None if no such gap exists. Shared by _place_anchored (bumped
+        tasks) and _fill_gaps so interval math lives in one place."""
         raise NotImplementedError
 
     def _place_anchored(self, tasks: list[Task]) -> None:
-        """Place tasks that have a preferred_time, resolving clashes by priority."""
+        """Place tasks that have a preferred_time, resolving clashes by priority.
+        The loser of a clash loses its anchor and flows into the gap-fill pool."""
         raise NotImplementedError
 
-    def _resolve_clash(self, a: Task, b: Task) -> Task:
-        """Return the task that wins a contested slot; the loser gets bumped."""
+    def _resolve_clash(self, a: Task, b: Task) -> tuple[Task, Task]:
+        """Given two tasks contending for the same slot, return (winner, loser).
+        Winner = higher priority; tie -> shorter duration; still tied -> `a`
+        (caller passes them in a stable order). N-way clashes are resolved by
+        folding this pairwise."""
         raise NotImplementedError
 
     def _fill_gaps(self, tasks: list[Task]) -> None:
-        """Place un-timed (and bumped) tasks into remaining gaps by priority."""
+        """Place un-timed (and bumped) tasks into remaining gaps by priority,
+        using _first_free_gap; tasks with no gap go to self.dropped."""
         raise NotImplementedError
 
     def explain(self) -> str:
