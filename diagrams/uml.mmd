@@ -1,15 +1,59 @@
 classDiagram
-    %% Replace the placeholders below with your actual classes, attributes, methods, and relationships.
-    %% Keep this file updated so it matches your final implementation.
+    %% PawPal+ : one Owner -> many Pets -> many Tasks; Schedule builds a daily plan
+    %% Times are stored as minutes-since-midnight (ints); formatted to HH:MM only for display.
 
-    class ClassName {
-        +type attribute
-        +method() returnType
+    class Owner {
+        +str name
+        +list~Pet~ pets
+        +int day_start
+        +int day_end
+        +dict preferences
+        +add_pet(pet) None
+        +all_tasks() list~Task~
+        +total_task_load() int
     }
 
-    class AnotherClass {
-        +type attribute
-        +method() returnType
+    class Pet {
+        +str name
+        +str species
+        +str breed
+        +int age
+        +list~Task~ tasks
+        +str special_needs
+        +add_task(task) None
+        +remove_task(task) None
+        +tasks_by_priority() list~Task~
     }
 
-    ClassName --> AnotherClass : relationship
+    class Task {
+        +str name
+        +int duration
+        +int priority
+        +str category
+        +int preferred_time
+        +str recurrence
+        +Pet pet
+        +summary() str
+        +is_due_today(date) bool
+    }
+
+    class Schedule {
+        +date date
+        +Owner owner
+        +list~tuple~ entries
+        +list~Task~ dropped
+        +generate() None
+        -_collect_tasks() list~Task~
+        -_sort_tasks(tasks) list~Task~
+        -_place_anchored(tasks) None
+        -_resolve_clash(a, b) Task
+        -_fill_gaps(tasks) None
+        +explain() str
+        +__str__() str
+    }
+
+    Owner "1" --> "*" Pet : owns
+    Pet "1" --> "*" Task : has
+    Task "*" --> "1" Pet : belongs to
+    Schedule "1" --> "1" Owner : plans for
+    Schedule "1" --> "*" Task : schedules
