@@ -24,6 +24,11 @@ class Task:
     preferred_time: Optional[int] = None   # minutes since midnight, if fixed
     recurrence: Optional[str] = None       # e.g. "daily", "weekly"
     pet: Optional["Pet"] = None            # back-reference, set on add_task
+    completed: bool = False
+
+    def mark_complete(self) -> None:
+        """Mark this task as done."""
+        self.completed = True
 
     def summary(self) -> str:
         """Short human-readable description for display in a plan."""
@@ -35,12 +40,7 @@ class Task:
         return f"{pet_part}{self.name} ({self.duration} min, priority {self.priority}){time_part}"
 
     def is_due_today(self, day: date) -> bool:
-        """Whether this task should run on the given day.
-
-        For now only "daily" (and None == every day) is supported; "weekly"
-        needs an anchor (a start_date/weekday on Task) and is out of scope until
-        that field exists.
-        """
+        """Return True for None/daily recurrence; weekly is out of scope until a weekday anchor exists."""
         return self.recurrence in (None, "daily")
 
 
@@ -54,15 +54,12 @@ class Pet:
     tasks: list[Task] = field(default_factory=list)
 
     def add_task(self, task: Task) -> None:
-        """Attach a task to this pet. MUST set task.pet = self so the task stays
-        attributable after Schedule pools tasks across pets. This is the only
-        supported way to set a task's pet back-reference."""
+        """Attach a task to this pet and set its back-reference; the only supported way to do so."""
         task.pet = self
         self.tasks.append(task)
 
     def remove_task(self, task: Task) -> None:
-        """Detach a task from this pet and clear task.pet (avoid a dangling
-        back-reference to a pet that no longer lists the task)."""
+        """Detach a task from this pet and clear its back-reference."""
         self.tasks.remove(task)
         task.pet = None
 
@@ -100,12 +97,7 @@ class Schedule:
     dropped: list[Task] = field(default_factory=list)                   # didn't fit / bumped out
 
     def generate(self) -> None:
-        """Build the daily plan: collect -> sort -> place anchored -> fill gaps -> drop overflow.
-
-        Idempotent: clears self.entries and self.dropped first, so repeated calls
-        (e.g. on every Streamlit rerun) rebuild the plan instead of accumulating
-        duplicates.
-        """
+        """Clear and rebuild the daily plan (idempotent): collect → sort → anchor → fill gaps → drop overflow."""
         self.entries.clear()
         self.dropped.clear()
         tasks = self._collect_tasks()
@@ -116,11 +108,7 @@ class Schedule:
         self._fill_gaps(self._sort_tasks(unanchored + bumped))
 
     def _collect_tasks(self) -> list[Task]:
-        """Gather all due tasks from the owner's pets into one pool.
-
-        Every pooled task must have task.pet set (guaranteed by Pet.add_task);
-        assert this so a task added by some other path can't go unattributable.
-        """
+        """Gather all tasks due today across every pet; assert each has a pet back-reference."""
         pool = []
         for pet in self.owner.pets:
             for task in pet.tasks:
@@ -132,16 +120,11 @@ class Schedule:
         return pool
 
     def _sort_tasks(self, tasks: list[Task]) -> list[Task]:
-        """Deterministic ordering: priority (desc), then duration (asc), then
-        insertion order (stable sort) as the final tie-break — so identical
-        inputs always produce the same plan (tests depend on this)."""
+        """Sort by priority desc, then duration asc; stable sort breaks remaining ties by insertion order."""
         return sorted(tasks, key=lambda t: (-t.priority, t.duration))
 
     def _first_free_gap(self, duration: int, after: int) -> Optional[int]:
-        """Earliest start time >= `after` where a `duration`-minute task fits
-        without overlapping an existing entry or running past owner.day_end.
-        Returns None if no such gap exists. Shared by _place_anchored (bumped
-        tasks) and _fill_gaps so interval math lives in one place."""
+        """Return the earliest start >= `after` where `duration` minutes fit without overlap, or None."""
         cursor = max(after, self.owner.day_start)
         while cursor + duration <= self.owner.day_end:
             conflict = False
@@ -156,9 +139,7 @@ class Schedule:
         return None
 
     def _place_anchored(self, tasks: list[Task]) -> list[Task]:
-        """Place tasks that have a preferred_time, resolving clashes by priority.
-        The loser of a clash loses its anchor and flows into the gap-fill pool.
-        Returns the list of bumped tasks."""
+        """Place preferred-time tasks, bumping clash losers; return the bumped list for gap-fill."""
         bumped: list[Task] = []
         for task in tasks:
             pt = task.preferred_time
@@ -190,10 +171,7 @@ class Schedule:
         return bumped
 
     def _resolve_clash(self, a: Task, b: Task) -> tuple[Task, Task]:
-        """Given two tasks contending for the same slot, return (winner, loser).
-        Winner = higher priority; tie -> shorter duration; still tied -> `a`
-        (caller passes them in a stable order). N-way clashes are resolved by
-        folding this pairwise."""
+        """Return (winner, loser): higher priority wins, then shorter duration, then `a` by convention."""
         if a.priority != b.priority:
             return (a, b) if a.priority > b.priority else (b, a)
         if a.duration != b.duration:
@@ -201,8 +179,7 @@ class Schedule:
         return a, b  # `a` wins by stable convention
 
     def _fill_gaps(self, tasks: list[Task]) -> None:
-        """Place un-timed (and bumped) tasks into remaining gaps by priority,
-        using _first_free_gap; tasks with no gap go to self.dropped."""
+        """Place un-timed and bumped tasks into the first available gap by priority; overflow goes to dropped."""
         for task in tasks:
             assert task.pet is not None  # guaranteed by _collect_tasks assert
             start = self._first_free_gap(task.duration, self.owner.day_start)
