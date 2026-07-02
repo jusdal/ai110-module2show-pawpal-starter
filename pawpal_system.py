@@ -123,6 +123,23 @@ class Schedule:
         """Sort by priority desc, then duration asc; stable sort breaks remaining ties by insertion order."""
         return sorted(tasks, key=lambda t: (-t.priority, t.duration))
 
+    def sort_by_time(self) -> list[Task]:
+        """Return all scheduled tasks sorted by start time ascending."""
+        return [task for _, _, task in sorted(self.entries, key=lambda e: e[0])]
+
+    def filter_tasks(
+        self,
+        completed: Optional[bool] = None,
+        pet_name: Optional[str] = None,
+    ) -> list[Task]:
+        """Return scheduled tasks matching the given filters (both optional, combinable)."""
+        tasks = [task for _, _, task in self.entries]
+        if completed is not None:
+            tasks = [t for t in tasks if t.completed == completed]
+        if pet_name is not None:
+            tasks = [t for t in tasks if t.pet is not None and t.pet.name == pet_name]
+        return tasks
+
     def _first_free_gap(self, duration: int, after: int) -> Optional[int]:
         """Return the earliest start >= `after` where `duration` minutes fit without overlap, or None."""
         cursor = max(after, self.owner.day_start)

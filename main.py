@@ -9,29 +9,57 @@ mochi = Pet("Mochi", species="cat", breed="Tabby", age=5)
 owner.add_pet(biscuit)
 owner.add_pet(mochi)
 
-# Biscuit's tasks
-biscuit.add_task(Task("Morning walk",  duration=30, priority=3, category="walk",     preferred_time=8 * 60))
-biscuit.add_task(Task("Breakfast",     duration=10, priority=4, category="feeding",  preferred_time=8 * 60 + 30))
-biscuit.add_task(Task("Evening walk",  duration=30, priority=3, category="walk",     preferred_time=18 * 60))
-biscuit.add_task(Task("Flea meds",    duration=5,  priority=5, category="meds"))
+# Tasks added out of order to exercise sort_by_time()
+biscuit.add_task(Task("Evening walk",  duration=30, priority=3, category="walk",    preferred_time=18 * 60))
+biscuit.add_task(Task("Flea meds",     duration=5,  priority=5, category="meds"))
+biscuit.add_task(Task("Morning walk",  duration=30, priority=3, category="walk",    preferred_time=8 * 60))
+biscuit.add_task(Task("Breakfast",     duration=10, priority=4, category="feeding", preferred_time=8 * 60 + 30))
 
-# Mochi's tasks
-mochi.add_task(Task("Morning feeding", duration=5,  priority=4, category="feeding",  preferred_time=7 * 60 + 30))
+mochi.add_task(Task("Evening feeding", duration=5,  priority=4, category="feeding", preferred_time=18 * 60))
 mochi.add_task(Task("Playtime",        duration=20, priority=2, category="grooming"))
-mochi.add_task(Task("Evening feeding", duration=5,  priority=4, category="feeding",  preferred_time=18 * 60))
+mochi.add_task(Task("Morning feeding", duration=5,  priority=4, category="feeding", preferred_time=7 * 60 + 30))
 
 sched = Schedule(owner=owner, date=date.today())
 sched.generate()
 
-print(f"Today's Schedule — {sched.date}")
+# --- sort_by_time() ---
+print(f"Today's Schedule — {sched.date} (sorted by time)")
 print("=" * 40)
-print(sched)
+for task in sched.sort_by_time():
+    print(f"  • {task.summary()}")
+
+# --- filter_tasks(pet_name=) ---
+print()
+print("Biscuit's tasks only:")
+print("-" * 40)
+for task in sched.filter_tasks(pet_name="Biscuit"):
+    print(f"  • {task.summary()}")
+
+# Mark one task complete to exercise the completed filter
+biscuit_tasks = sched.filter_tasks(pet_name="Biscuit")
+if biscuit_tasks:
+    biscuit_tasks[0].mark_complete()
+
+# --- filter_tasks(completed=True) ---
+print()
+print("Completed tasks:")
+print("-" * 40)
+completed = sched.filter_tasks(completed=True)
+if completed:
+    for task in completed:
+        print(f"  ✓ {task.summary()}")
+else:
+    print("  (none)")
+
+# --- filter_tasks(completed=False) ---
+print()
+print("Remaining tasks:")
+print("-" * 40)
+for task in sched.filter_tasks(completed=False):
+    print(f"  • {task.summary()}")
 
 if sched.dropped:
     print()
     print("Couldn't fit:")
     for task in sched.dropped:
         print(f"  • {task.summary()}")
-
-print()
-print(sched.explain())
