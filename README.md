@@ -22,6 +22,15 @@ Your final app should:
 - Display the plan clearly (and ideally explain the reasoning)
 - Include tests for the most important scheduling behaviors
 
+## System Classes
+
+PawPal+ is built on four classes defined in `pawpal_system.py`:
+
+- **Owner** — represents the person using the app. Holds a name, a daily time window (`day_start`/`day_end` in minutes-since-midnight), optional preferences, and a list of `Pet`s. Provides `add_pet()`, `all_tasks()` (flat list across all pets), and `total_task_load()`.
+- **Pet** — represents a single pet with identifying info (name, species, breed, age, special_needs) and a list of `Task`s. Manages its own task collection via `add_task()`, `remove_task()`, and `tasks_by_priority()`.
+- **Task** — represents one care activity. Key attributes: `name`, `duration` (minutes), `priority` (higher = more important), `preferred_time` (minutes-since-midnight, optional), `due_date`, `recurrence` (`"daily"` or `"weekly"`), and `completed`. `mark_complete()` flips the flag and, for recurring tasks, spawns and registers the next occurrence.
+- **Schedule** — the planner. Takes an `Owner` and a `date`, then `generate()` builds the daily plan across all pets in four phases: collect due tasks → sort by priority/duration → anchor preferred-time tasks (resolving clashes by priority) → fill remaining gaps. Also provides `sort_by_time()`, `filter_tasks()`, `detect_conflicts()`, and `explain()`.
+
 ## Getting started
 
 ### Setup
