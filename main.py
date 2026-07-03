@@ -63,3 +63,22 @@ if sched.dropped:
     print("Couldn't fit:")
     for task in sched.dropped:
         print(f"  • {task.summary()}")
+
+# --- conflict detection ---
+# Force two overlapping entries (same start, different pets) to demonstrate detection.
+vet_visit   = Task("Vet checkup",      duration=60, priority=5, category="meds",     preferred_time=10 * 60)
+grooming    = Task("Grooming session", duration=45, priority=3, category="grooming", preferred_time=10 * 60 + 20)
+biscuit.add_task(vet_visit)
+mochi.add_task(grooming)
+sched.entries.append((10 * 60,      biscuit, vet_visit))   # 10:00–11:00
+sched.entries.append((10 * 60 + 20, mochi,   grooming))    # 10:20–11:05 — overlaps vet visit
+
+print()
+print("Conflict Detection:")
+print("-" * 40)
+conflicts = sched.detect_conflicts()
+if conflicts:
+    for warning in conflicts:
+        print(f"  {warning}")
+else:
+    print("  No conflicts found.")

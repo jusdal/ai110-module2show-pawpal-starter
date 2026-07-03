@@ -243,6 +243,27 @@ class Schedule:
                 )
         return "\n".join(lines)
 
+    def detect_conflicts(self) -> list[str]:
+        """Check scheduled entries for time overlaps; return warning strings (never raises)."""
+        warnings = []
+        entries = sorted(self.entries, key=lambda e: e[0])
+        for i in range(len(entries)):
+            s_a, pet_a, task_a = entries[i]
+            end_a = s_a + task_a.duration
+            for j in range(i + 1, len(entries)):
+                s_b, pet_b, task_b = entries[j]
+                if s_b >= end_a:
+                    break  # sorted by start time — no further overlaps possible
+                who = "same pet" if pet_a is pet_b else "different pets"
+                h_a, m_a = divmod(s_a, 60)
+                h_b, m_b = divmod(s_b, 60)
+                warnings.append(
+                    f"WARNING: Conflict ({who}) — "
+                    f"'{task_a.name}' for {pet_a.name} @ {h_a:02d}:{m_a:02d} "
+                    f"overlaps '{task_b.name}' for {pet_b.name} @ {h_b:02d}:{m_b:02d}"
+                )
+        return warnings
+
     def __str__(self) -> str:
         """Render the plan like the sample output (HH:MM — Task (dur) [priority])."""
         if not self.entries:
