@@ -69,29 +69,50 @@ Daily plan for Jordan — 2026-07-02
 
 ```bash
 # Run the full test suite:
-pytest
+python -m pytest tests/test_pawpal.py -v
 
 # Run with coverage:
-pytest --cov
+python -m pytest --cov
 ```
 
-Sample test output:
+### What the tests cover
+
+| Area | Tests |
+|------|-------|
+| **Task lifecycle** | Marking a task complete flips `completed`; non-recurring tasks return `None` |
+| **Recurrence logic** | `daily` spawns next task +1 day; `weekly` +7 days; unknown recurrence (e.g. `"monthly"`) does not spawn; missing `due_date` falls back to `date.today()` |
+| **Sorting correctness** | `sort_by_time()` returns scheduled tasks in chronological order regardless of insertion order |
+| **Conflict detection** | Overlapping entries produce a `WARNING` string; back-to-back entries (end == start) are not flagged; empty schedule returns no warnings |
+| **Pet & task wiring** | `add_task` sets the back-reference and grows `pet.tasks`; `is_due_today` respects `due_date` over recurrence type |
+
+### Test run output
 
 ```
 ============================= test session starts ==============================
 platform darwin -- Python 3.13.1, pytest-9.1.1, pluggy-1.6.0
-collected 7 items
+rootdir: /Users/justindaly/codepath/ai110-module2show-pawpal-starter
+collected 13 items
 
-tests/test_pawpal.py::test_mark_complete_changes_status PASSED           [ 14%]
-tests/test_pawpal.py::test_mark_complete_daily_spawns_next_task PASSED   [ 28%]
-tests/test_pawpal.py::test_mark_complete_weekly_spawns_next_task PASSED  [ 42%]
-tests/test_pawpal.py::test_mark_complete_non_recurring_returns_none PASSED [ 57%]
-tests/test_pawpal.py::test_mark_complete_without_pet_no_spawn PASSED     [ 71%]
-tests/test_pawpal.py::test_is_due_today_uses_due_date PASSED             [ 85%]
-tests/test_pawpal.py::test_add_task_increases_pet_task_count PASSED      [100%]
+tests/test_pawpal.py::test_mark_complete_changes_status PASSED           [  7%]
+tests/test_pawpal.py::test_mark_complete_daily_spawns_next_task PASSED   [ 15%]
+tests/test_pawpal.py::test_mark_complete_weekly_spawns_next_task PASSED  [ 23%]
+tests/test_pawpal.py::test_mark_complete_non_recurring_returns_none PASSED [ 30%]
+tests/test_pawpal.py::test_mark_complete_without_pet_no_spawn PASSED     [ 38%]
+tests/test_pawpal.py::test_is_due_today_uses_due_date PASSED             [ 46%]
+tests/test_pawpal.py::test_add_task_increases_pet_task_count PASSED      [ 53%]
+tests/test_pawpal.py::test_sort_by_time_returns_chronological_order PASSED [ 61%]
+tests/test_pawpal.py::test_mark_complete_daily_no_due_date_uses_today PASSED [ 69%]
+tests/test_pawpal.py::test_mark_complete_unknown_recurrence_returns_none PASSED [ 76%]
+tests/test_pawpal.py::test_detect_conflicts_flags_overlapping_tasks PASSED [ 84%]
+tests/test_pawpal.py::test_detect_conflicts_back_to_back_not_flagged PASSED [ 92%]
+tests/test_pawpal.py::test_detect_conflicts_empty_schedule_returns_no_warnings PASSED [100%]
 
-============================== 7 passed in 0.02s ===============================
+============================== 13 passed in 0.02s ==============================
 ```
+
+### Confidence Level: ★★★★☆ (4/5)
+
+The core task lifecycle, recurrence logic, sort ordering, and conflict detection are all exercised — including key edge cases (missing due date, unknown recurrence, back-to-back entries). The scheduling pipeline internals (`_place_anchored`, `_fill_gaps`, clash resolution winner/loser, tasks dropped for lack of time) are not yet covered by unit tests, which is where the remaining uncertainty lives.
 
 ## 📐 Smarter Scheduling
 
