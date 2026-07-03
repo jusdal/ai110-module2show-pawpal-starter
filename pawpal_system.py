@@ -135,14 +135,13 @@ class Schedule:
         self._fill_gaps(self._sort_tasks(unanchored + bumped))
 
     def _collect_tasks(self) -> list[Task]:
-        """Gather all tasks due today across every pet; assert each has a pet back-reference."""
+        """Gather all tasks due today across every pet; heal any missing pet back-references in place."""
         pool = []
         for pet in self.owner.pets:
             for task in pet.tasks:
                 if task.is_due_today(self.date):
-                    assert task.pet is not None, (
-                        f"Task '{task.name}' has no pet reference — use Pet.add_task() to attach tasks"
-                    )
+                    if task.pet is None:
+                        task.pet = pet  # re-attach: we know which pet owns this task
                     pool.append(task)
         return pool
 
@@ -247,23 +246,50 @@ class Schedule:
                 self.dropped.append(task)
 
     def explain(self) -> str:
-        """Human-readable rationale for what was scheduled and what was dropped."""
-        lines = [f"Daily plan for {self.owner.name} — {self.date}"]
-        if not self.entries:
-            lines.append("  (nothing scheduled)")
-        for start, pet, task in sorted(self.entries, key=lambda e: e[0]):
-            h, m = divmod(start, 60)
-            anchor = " [anchored]" if task.preferred_time == start else ""
-            lines.append(
-                f"  {h:02d}:{m:02d} — {task.name} for {pet.name}"
-                f" ({task.duration} min, priority {task.priority}){anchor}"
-            )
+        """Human-readable rationale for scheduling decisions — not a reprint of the plan."""
+        lines = [f"How today's plan was built ({self.date}):"]
+
+        # Sorting logic
+        lines.append(
+            "\n1. Prioritization: tasks were sorted by priority (high → low), then by "
+            "duration (shortest first) so more tasks fit when time is tight."
+        )
+
+        # Anchored vs gap-filled
+        anchored = [(s, p, t) for s, p, t in self.entries if t.preferred_time == s]
+        moved = [(s, p, t) for s, p, t in self.entries if t.preferred_time is not None and t.preferred_time != s]
+        unanchored = [(s, p, t) for s, p, t in self.entries if t.preferred_time is None]
+
+        lines.append(
+            f"\n2. Placement: {len(anchored)} task(s) kept their preferred time (anchored), "
+            f"{len(unanchored)} task(s) had no preferred time and were fitted into open gaps."
+        )
+
+        # Moved tasks with specific reasons
+        if moved:
+            lines.append(f"\n3. Rescheduled ({len(moved)} task(s) couldn't keep their preferred time):")
+            for start, pet, task in moved:
+                assert task.preferred_time is not None
+                h_p, m_p = divmod(task.preferred_time, 60)
+                h_s, m_s = divmod(start, 60)
+                lines.append(
+                    f"   - {pet.name}'s '{task.name}': requested {h_p:02d}:{m_p:02d}, "
+                    f"placed at {h_s:02d}:{m_s:02d} (preferred slot was taken by a higher- or equal-priority task)."
+                )
+        else:
+            lines.append("\n3. No tasks needed to be moved from their preferred time.")
+
+        # Dropped tasks with specific reasons
         if self.dropped:
-            lines.append("Dropped (no time remaining):")
+            lines.append(f"\n4. Dropped ({len(self.dropped)} task(s) couldn't fit):")
             for task in self.dropped:
                 lines.append(
-                    f"  {task.name} ({task.duration} min, priority {task.priority})"
+                    f"   - '{task.name}' ({task.duration} min, priority {task.priority}): "
+                    f"no gap of {task.duration}+ min remained in the day."
                 )
+        else:
+            lines.append("\n4. All tasks fit — nothing was dropped.")
+
         return "\n".join(lines)
 
     def detect_conflicts(self) -> list[str]:
