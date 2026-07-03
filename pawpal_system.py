@@ -11,7 +11,7 @@ Convention: higher priority int == more important.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from typing import Optional
 
 
@@ -23,12 +23,28 @@ class Task:
     category: Optional[str] = None         # walk / feeding / meds / grooming
     preferred_time: Optional[int] = None   # minutes since midnight, if fixed
     recurrence: Optional[str] = None       # e.g. "daily", "weekly"
+    due_date: Optional[date] = None        # specific date this instance is due
     pet: Optional["Pet"] = None            # back-reference, set on add_task
     completed: bool = False
 
-    def mark_complete(self) -> None:
-        """Mark this task as done."""
+    def mark_complete(self) -> Optional["Task"]:
+        """Mark this task as done; if recurring, register the next occurrence with the pet."""
         self.completed = True
+        if self.recurrence in ("daily", "weekly") and self.pet is not None:
+            delta = timedelta(days=1 if self.recurrence == "daily" else 7)
+            next_due = (self.due_date or date.today()) + delta
+            next_task = Task(
+                name=self.name,
+                duration=self.duration,
+                priority=self.priority,
+                category=self.category,
+                preferred_time=self.preferred_time,
+                recurrence=self.recurrence,
+                due_date=next_due,
+            )
+            self.pet.add_task(next_task)
+            return next_task
+        return None
 
     def summary(self) -> str:
         """Short human-readable description for display in a plan."""
@@ -40,7 +56,9 @@ class Task:
         return f"{pet_part}{self.name} ({self.duration} min, priority {self.priority}){time_part}"
 
     def is_due_today(self, day: date) -> bool:
-        """Return True for None/daily recurrence; weekly is out of scope until a weekday anchor exists."""
+        """Return True if this task is due on `day`. Uses due_date when set; falls back to recurrence type."""
+        if self.due_date is not None:
+            return self.due_date == day
         return self.recurrence in (None, "daily")
 
 
