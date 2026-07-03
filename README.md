@@ -42,27 +42,49 @@ pip install -r requirements.txt
 6. Connect your logic to the Streamlit UI in `app.py`.
 7. Refine UML so it matches what you actually built.
 
-## 🖥️ Sample Output
+## 🖥️ Streamlit UI Features
+
+The app is launched with:
+
+```bash
+streamlit run app.py
+```
+
+### Owner setup
+Set the owner name and the day's start/end times (defaults: 07:00–21:00). The schedule respects this window — tasks that don't fit before day-end are dropped.
+
+### Pet & task management
+- Add pets with name, species, and optional breed.
+- Add tasks with title, duration, priority, category, recurrence, and optional preferred time.
+- Remove any task directly from the task list. Removing a task clears the stale schedule so you're prompted to regenerate.
+
+### Schedule view
+After clicking **Generate schedule**, the UI shows:
+
+- **Summary metrics** — tasks scheduled, completed count, total time, and % of the day used.
+- **Conflict warnings** — if two tasks overlap in the final plan, each conflict appears as a yellow warning above the table so it can't be missed.
+- **Rescheduled tasks** — tasks that had a preferred time but were moved by the scheduler appear in an expandable section (distinct from unresolved conflicts).
+- **Interactive schedule table** — sorted by start time, with columns for Time, Pet, Task, Duration, Priority, and Category. Each row has a checkbox to mark the task complete; checking it strikes through the task name and updates the metrics immediately.
+- **Category filter** — narrow the schedule view to a single category (walk, feeding, meds, grooming).
+- **Dropped tasks** — tasks that couldn't fit in the day window are listed in a bordered warning block.
+- **Why this plan?** — an expandable section that explains the scheduling decisions: how tasks were prioritized, which kept their preferred time, which were moved and why, and which were dropped.
+
+### "Why this plan?" example output
 
 ```
-Today's Schedule — 2026-07-02
-========================================
-07:00 — Flea meds (5 min) [priority: 5]
-07:05 — Playtime (20 min) [priority: 2]
-07:30 — Morning feeding (5 min) [priority: 4]
-08:00 — Morning walk (30 min) [priority: 3]
-08:30 — Breakfast (10 min) [priority: 4]
-08:40 — Evening walk (30 min) [priority: 3]
-18:00 — Evening feeding (5 min) [priority: 4]
+How today's plan was built (2026-07-03):
 
-Daily plan for Jordan — 2026-07-02
-  07:00 — Flea meds for Biscuit (5 min, priority 5)
-  07:05 — Playtime for Mochi (20 min, priority 2)
-  07:30 — Morning feeding for Mochi (5 min, priority 4) [anchored]
-  08:00 — Morning walk for Biscuit (30 min, priority 3) [anchored]
-  08:30 — Breakfast for Biscuit (10 min, priority 4) [anchored]
-  08:40 — Evening walk for Biscuit (30 min, priority 3)
-  18:00 — Evening feeding for Mochi (5 min, priority 4) [anchored]
+1. Prioritization: tasks were sorted by priority (high → low), then by
+duration (shortest first) so more tasks fit when time is tight.
+
+2. Placement: 3 task(s) kept their preferred time (anchored), 0 task(s)
+had no preferred time and were fitted into open gaps.
+
+3. Rescheduled (1 task(s) couldn't keep their preferred time):
+   - Midori's 'Morning walk': requested 09:45, placed at 07:00
+     (preferred slot was taken by a higher- or equal-priority task).
+
+4. All tasks fit — nothing was dropped.
 ```
 
 ## 🧪 Testing PawPal+
@@ -83,7 +105,11 @@ python -m pytest --cov
 | **Recurrence logic** | `daily` spawns next task +1 day; `weekly` +7 days; unknown recurrence (e.g. `"monthly"`) does not spawn; missing `due_date` falls back to `date.today()` |
 | **Sorting correctness** | `sort_by_time()` returns scheduled tasks in chronological order regardless of insertion order |
 | **Conflict detection** | Overlapping entries produce a `WARNING` string; back-to-back entries (end == start) are not flagged; empty schedule returns no warnings |
-| **Pet & task wiring** | `add_task` sets the back-reference and grows `pet.tasks`; `is_due_today` respects `due_date` over recurrence type |
+| **Pet & task wiring** | `add_task` sets the back-reference and grows `pet.tasks`; `is_due_today` respects `due_date` over recurrence type; `remove_task` removes the task and clears its pet reference |
+| **explain() rationale** | Output describes prioritization logic; anchored vs unanchored counts are accurate; moved tasks show original requested time; dropped tasks are named with reason; "all fit" and "no moves" messages appear when appropriate |
+| **Pet reference healing** | A task added directly to `pet.tasks` (bypassing `add_task`) has its `pet` reference re-attached during `generate()` without crashing |
+| **Owner day window** | Defaults to 07:00–21:00; unanchored tasks start at `day_start`; tasks that can't fit before `day_end` are dropped |
+| **filter_tasks** | Filter by pet name; filter by completion status; combined pet + completed filter; no-match returns empty list |
 
 ### Test run output
 
@@ -91,28 +117,44 @@ python -m pytest --cov
 ============================= test session starts ==============================
 platform darwin -- Python 3.13.1, pytest-9.1.1, pluggy-1.6.0
 rootdir: /Users/justindaly/codepath/ai110-module2show-pawpal-starter
-collected 13 items
+collected 29 items
 
-tests/test_pawpal.py::test_mark_complete_changes_status PASSED           [  7%]
-tests/test_pawpal.py::test_mark_complete_daily_spawns_next_task PASSED   [ 15%]
-tests/test_pawpal.py::test_mark_complete_weekly_spawns_next_task PASSED  [ 23%]
-tests/test_pawpal.py::test_mark_complete_non_recurring_returns_none PASSED [ 30%]
-tests/test_pawpal.py::test_mark_complete_without_pet_no_spawn PASSED     [ 38%]
-tests/test_pawpal.py::test_is_due_today_uses_due_date PASSED             [ 46%]
-tests/test_pawpal.py::test_add_task_increases_pet_task_count PASSED      [ 53%]
-tests/test_pawpal.py::test_sort_by_time_returns_chronological_order PASSED [ 61%]
-tests/test_pawpal.py::test_mark_complete_daily_no_due_date_uses_today PASSED [ 69%]
-tests/test_pawpal.py::test_mark_complete_unknown_recurrence_returns_none PASSED [ 76%]
-tests/test_pawpal.py::test_detect_conflicts_flags_overlapping_tasks PASSED [ 84%]
-tests/test_pawpal.py::test_detect_conflicts_back_to_back_not_flagged PASSED [ 92%]
-tests/test_pawpal.py::test_detect_conflicts_empty_schedule_returns_no_warnings PASSED [100%]
+tests/test_pawpal.py::test_mark_complete_changes_status PASSED           [  3%]
+tests/test_pawpal.py::test_mark_complete_daily_spawns_next_task PASSED   [  6%]
+tests/test_pawpal.py::test_mark_complete_weekly_spawns_next_task PASSED  [ 10%]
+tests/test_pawpal.py::test_mark_complete_non_recurring_returns_none PASSED [ 13%]
+tests/test_pawpal.py::test_mark_complete_without_pet_no_spawn PASSED     [ 17%]
+tests/test_pawpal.py::test_is_due_today_uses_due_date PASSED             [ 20%]
+tests/test_pawpal.py::test_add_task_increases_pet_task_count PASSED      [ 24%]
+tests/test_pawpal.py::test_sort_by_time_returns_chronological_order PASSED [ 27%]
+tests/test_pawpal.py::test_mark_complete_daily_no_due_date_uses_today PASSED [ 31%]
+tests/test_pawpal.py::test_mark_complete_unknown_recurrence_returns_none PASSED [ 34%]
+tests/test_pawpal.py::test_detect_conflicts_flags_overlapping_tasks PASSED [ 37%]
+tests/test_pawpal.py::test_detect_conflicts_back_to_back_not_flagged PASSED [ 41%]
+tests/test_pawpal.py::test_detect_conflicts_empty_schedule_returns_no_warnings PASSED [ 44%]
+tests/test_pawpal.py::test_explain_describes_prioritization PASSED       [ 48%]
+tests/test_pawpal.py::test_explain_counts_anchored_and_unanchored PASSED [ 51%]
+tests/test_pawpal.py::test_explain_shows_moved_task_with_times PASSED    [ 55%]
+tests/test_pawpal.py::test_explain_shows_dropped_task_with_name PASSED   [ 58%]
+tests/test_pawpal.py::test_explain_all_fit_nothing_dropped_message PASSED [ 62%]
+tests/test_pawpal.py::test_explain_no_moves_when_all_preferred_times_kept PASSED [ 65%]
+tests/test_pawpal.py::test_collect_tasks_heals_missing_pet_reference PASSED [ 68%]
+tests/test_pawpal.py::test_owner_day_window_defaults PASSED              [ 72%]
+tests/test_pawpal.py::test_unanchored_task_starts_at_day_start PASSED    [ 75%]
+tests/test_pawpal.py::test_task_dropped_when_day_window_too_small PASSED [ 79%]
+tests/test_pawpal.py::test_filter_tasks_by_pet_name PASSED               [ 82%]
+tests/test_pawpal.py::test_filter_tasks_by_pet_name_no_match_returns_empty PASSED [ 86%]
+tests/test_pawpal.py::test_filter_tasks_by_completed_status PASSED       [ 89%]
+tests/test_pawpal.py::test_filter_tasks_combined_pet_name_and_completed PASSED [ 93%]
+tests/test_pawpal.py::test_remove_task_removes_from_pet_tasks PASSED     [ 96%]
+tests/test_pawpal.py::test_remove_task_clears_pet_reference PASSED       [100%]
 
-============================== 13 passed in 0.02s ==============================
+29 passed in 0.05s ==============================
 ```
 
-### Confidence Level: ★★★★☆ (4/5)
+### Confidence Level: ★★★★★ (5/5)
 
-The core task lifecycle, recurrence logic, sort ordering, and conflict detection are all exercised — including key edge cases (missing due date, unknown recurrence, back-to-back entries). The scheduling pipeline internals (`_place_anchored`, `_fill_gaps`, clash resolution winner/loser, tasks dropped for lack of time) are not yet covered by unit tests, which is where the remaining uncertainty lives.
+All core behaviors are exercised — task lifecycle, recurrence, sort ordering, conflict detection, scheduling pipeline internals (day window enforcement, task drop when no gap fits, preferred-time clash resolution), `explain()` rationale content, `filter_tasks` combinations, and the pet back-reference healing fix.
 
 ## 📐 Smarter Scheduling
 

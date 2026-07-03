@@ -173,3 +173,234 @@ def test_detect_conflicts_empty_schedule_returns_no_warnings():
     owner = Owner(name="Alex")
     schedule = Schedule(owner=owner, date=date(2026, 7, 3))
     assert schedule.detect_conflicts() == []
+
+
+# ---------------------------------------------------------------------------
+# explain() rationale content
+# ---------------------------------------------------------------------------
+
+def test_explain_describes_prioritization():
+    owner = Owner(name="Alex")
+    pet = Pet(name="Biscuit", species="dog")
+    owner.add_pet(pet)
+    today = date(2026, 7, 3)
+    pet.add_task(Task(name="Walk", duration=30, priority=3, due_date=today))
+    sched = Schedule(owner=owner, date=today)
+    sched.generate()
+    explanation = sched.explain()
+    assert "priority" in explanation.lower()
+    assert "duration" in explanation.lower()
+
+
+def test_explain_counts_anchored_and_unanchored():
+    owner = Owner(name="Alex")
+    pet = Pet(name="Biscuit", species="dog")
+    owner.add_pet(pet)
+    today = date(2026, 7, 3)
+    pet.add_task(Task(name="Walk", duration=20, priority=3, preferred_time=8 * 60, due_date=today))
+    pet.add_task(Task(name="Feeding", duration=10, priority=2, due_date=today))
+    sched = Schedule(owner=owner, date=today)
+    sched.generate()
+    explanation = sched.explain()
+    assert "1 task(s) kept their preferred time" in explanation
+    assert "1 task(s) had no preferred time" in explanation
+
+
+def test_explain_shows_moved_task_with_times():
+    owner = Owner(name="Alex")
+    pet_a = Pet(name="Biscuit", species="dog")
+    pet_b = Pet(name="Mochi", species="cat")
+    owner.add_pet(pet_a)
+    owner.add_pet(pet_b)
+    today = date(2026, 7, 3)
+    # Both want 09:00; one will be bumped to a gap
+    pet_a.add_task(Task(name="Walk A", duration=30, priority=3, preferred_time=9 * 60, due_date=today))
+    pet_b.add_task(Task(name="Walk B", duration=30, priority=3, preferred_time=9 * 60, due_date=today))
+    sched = Schedule(owner=owner, date=today)
+    sched.generate()
+    explanation = sched.explain()
+    assert "Rescheduled" in explanation
+    assert "09:00" in explanation  # the original requested time appears in the explanation
+
+
+def test_explain_shows_dropped_task_with_name():
+    owner = Owner(name="Alex", day_start=8 * 60, day_end=8 * 60 + 30)  # 30 min window
+    pet = Pet(name="Biscuit", species="dog")
+    owner.add_pet(pet)
+    today = date(2026, 7, 3)
+    pet.add_task(Task(name="Walk", duration=20, priority=3, due_date=today))
+    pet.add_task(Task(name="Feeding", duration=20, priority=2, due_date=today))  # no room
+    sched = Schedule(owner=owner, date=today)
+    sched.generate()
+    explanation = sched.explain()
+    assert "Dropped" in explanation
+    assert "Feeding" in explanation
+
+
+def test_explain_all_fit_nothing_dropped_message():
+    owner = Owner(name="Alex")
+    pet = Pet(name="Biscuit", species="dog")
+    owner.add_pet(pet)
+    today = date(2026, 7, 3)
+    pet.add_task(Task(name="Walk", duration=20, priority=3, due_date=today))
+    sched = Schedule(owner=owner, date=today)
+    sched.generate()
+    assert "All tasks fit" in sched.explain()
+
+
+def test_explain_no_moves_when_all_preferred_times_kept():
+    owner = Owner(name="Alex")
+    pet = Pet(name="Biscuit", species="dog")
+    owner.add_pet(pet)
+    today = date(2026, 7, 3)
+    pet.add_task(Task(name="Walk", duration=20, priority=3, preferred_time=8 * 60, due_date=today))
+    sched = Schedule(owner=owner, date=today)
+    sched.generate()
+    assert "No tasks needed to be moved" in sched.explain()
+
+
+# ---------------------------------------------------------------------------
+# _collect_tasks pet back-reference healing
+# ---------------------------------------------------------------------------
+
+def test_collect_tasks_heals_missing_pet_reference():
+    """A task appended to pet.tasks without pet.add_task() should have its
+    pet reference re-attached during generate() rather than crashing."""
+    owner = Owner(name="Alex")
+    pet = Pet(name="Biscuit", species="dog")
+    owner.add_pet(pet)
+    today = date(2026, 7, 3)
+    task = Task(name="Walk", duration=20, priority=3, due_date=today)
+    pet.tasks.append(task)  # bypass add_task — task.pet is None
+    assert task.pet is None
+
+    sched = Schedule(owner=owner, date=today)
+    sched.generate()  # must not raise
+
+    assert task.pet is pet
+    assert len(sched.entries) == 1
+
+
+# ---------------------------------------------------------------------------
+# Owner day window (day_start / day_end)
+# ---------------------------------------------------------------------------
+
+def test_owner_day_window_defaults():
+    owner = Owner(name="Alex")
+    assert owner.day_start == 7 * 60   # 07:00
+    assert owner.day_end == 21 * 60    # 21:00
+
+
+def test_unanchored_task_starts_at_day_start():
+    owner = Owner(name="Alex", day_start=9 * 60, day_end=21 * 60)
+    pet = Pet(name="Biscuit", species="dog")
+    owner.add_pet(pet)
+    today = date(2026, 7, 3)
+    pet.add_task(Task(name="Walk", duration=20, priority=3, due_date=today))
+    sched = Schedule(owner=owner, date=today)
+    sched.generate()
+    assert sched.entries[0][0] == 9 * 60
+
+
+def test_task_dropped_when_day_window_too_small():
+    owner = Owner(name="Alex", day_start=8 * 60, day_end=8 * 60 + 30)  # 30 min window
+    pet = Pet(name="Biscuit", species="dog")
+    owner.add_pet(pet)
+    today = date(2026, 7, 3)
+    pet.add_task(Task(name="Walk", duration=20, priority=3, due_date=today))
+    pet.add_task(Task(name="Feeding", duration=20, priority=2, due_date=today))  # only 10 min left
+    sched = Schedule(owner=owner, date=today)
+    sched.generate()
+    assert len(sched.entries) == 1
+    assert len(sched.dropped) == 1
+    assert sched.dropped[0].name == "Feeding"
+
+
+# ---------------------------------------------------------------------------
+# filter_tasks
+# ---------------------------------------------------------------------------
+
+def test_filter_tasks_by_pet_name():
+    owner = Owner(name="Alex")
+    pet_a = Pet(name="Biscuit", species="dog")
+    pet_b = Pet(name="Mochi", species="cat")
+    owner.add_pet(pet_a)
+    owner.add_pet(pet_b)
+    today = date(2026, 7, 3)
+    pet_a.add_task(Task(name="Walk", duration=20, priority=3, due_date=today))
+    pet_b.add_task(Task(name="Feeding", duration=10, priority=2, due_date=today))
+    sched = Schedule(owner=owner, date=today)
+    sched.generate()
+
+    result = sched.filter_tasks(pet_name="Biscuit")
+    assert len(result) == 1
+    assert result[0].name == "Walk"
+
+
+def test_filter_tasks_by_pet_name_no_match_returns_empty():
+    owner = Owner(name="Alex")
+    pet = Pet(name="Biscuit", species="dog")
+    owner.add_pet(pet)
+    today = date(2026, 7, 3)
+    pet.add_task(Task(name="Walk", duration=20, priority=3, due_date=today))
+    sched = Schedule(owner=owner, date=today)
+    sched.generate()
+
+    assert sched.filter_tasks(pet_name="Ghost") == []
+
+
+def test_filter_tasks_by_completed_status():
+    owner = Owner(name="Alex")
+    pet = Pet(name="Biscuit", species="dog")
+    owner.add_pet(pet)
+    today = date(2026, 7, 3)
+    walk = Task(name="Walk", duration=20, priority=3, due_date=today)
+    feeding = Task(name="Feeding", duration=10, priority=2, due_date=today)
+    pet.add_task(walk)
+    pet.add_task(feeding)
+    sched = Schedule(owner=owner, date=today)
+    sched.generate()
+    walk.completed = True
+
+    assert sched.filter_tasks(completed=True) == [walk]
+    assert sched.filter_tasks(completed=False) == [feeding]
+
+
+def test_filter_tasks_combined_pet_name_and_completed():
+    owner = Owner(name="Alex")
+    pet_a = Pet(name="Biscuit", species="dog")
+    pet_b = Pet(name="Mochi", species="cat")
+    owner.add_pet(pet_a)
+    owner.add_pet(pet_b)
+    today = date(2026, 7, 3)
+    walk = Task(name="Walk", duration=20, priority=3, due_date=today)
+    feeding = Task(name="Feeding", duration=10, priority=2, due_date=today)
+    pet_a.add_task(walk)
+    pet_b.add_task(feeding)
+    sched = Schedule(owner=owner, date=today)
+    sched.generate()
+    walk.completed = True
+
+    assert sched.filter_tasks(completed=True, pet_name="Biscuit") == [walk]
+    assert sched.filter_tasks(completed=True, pet_name="Mochi") == []
+
+
+# ---------------------------------------------------------------------------
+# remove_task
+# ---------------------------------------------------------------------------
+
+def test_remove_task_removes_from_pet_tasks():
+    pet = Pet(name="Biscuit", species="dog")
+    task = Task(name="Walk", duration=20, priority=3)
+    pet.add_task(task)
+    pet.remove_task(task)
+    assert task not in pet.tasks
+
+
+def test_remove_task_clears_pet_reference():
+    pet = Pet(name="Biscuit", species="dog")
+    task = Task(name="Walk", duration=20, priority=3)
+    pet.add_task(task)
+    assert task.pet is pet
+    pet.remove_task(task)
+    assert task.pet is None
