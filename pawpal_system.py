@@ -28,7 +28,16 @@ class Task:
     completed: bool = False
 
     def mark_complete(self) -> Optional["Task"]:
-        """Mark this task as done; if recurring, register the next occurrence with the pet."""
+        """Mark this task as done and spawn the next occurrence for recurring tasks.
+
+        Sets completed=True on this task. If recurrence is 'daily' or 'weekly'
+        and the task belongs to a pet, creates an identical task with due_date
+        advanced by 1 or 7 days respectively and registers it with the same pet
+        via add_task(). Non-recurring tasks or tasks without a pet reference are
+        simply marked complete with no side effects.
+
+        Returns the newly created Task if one was spawned, or None otherwise.
+        """
         self.completed = True
         if self.recurrence in ("daily", "weekly") and self.pet is not None:
             delta = timedelta(days=1 if self.recurrence == "daily" else 7)
@@ -142,7 +151,11 @@ class Schedule:
         return sorted(tasks, key=lambda t: (-t.priority, t.duration))
 
     def sort_by_time(self) -> list[Task]:
-        """Return all scheduled tasks sorted by start time ascending."""
+        """Return all scheduled tasks ordered by their assigned start time, earliest first.
+
+        Reads from self.entries, which is populated by generate(). Tasks tied on
+        start time retain their insertion order. Does not modify self.entries.
+        """
         return [task for _, _, task in sorted(self.entries, key=lambda e: e[0])]
 
     def filter_tasks(
@@ -150,7 +163,17 @@ class Schedule:
         completed: Optional[bool] = None,
         pet_name: Optional[str] = None,
     ) -> list[Task]:
-        """Return scheduled tasks matching the given filters (both optional, combinable)."""
+        """Return scheduled tasks that match all supplied filters.
+
+        Args:
+            completed: True → only completed tasks; False → only incomplete;
+                       None (default) → completion status is not filtered.
+            pet_name:  Name of a specific pet to restrict results to;
+                       None (default) → tasks for all pets are included.
+
+        Both filters are optional and can be combined in a single call.
+        Returns an empty list when no tasks match. Does not modify self.entries.
+        """
         tasks = [task for _, _, task in self.entries]
         if completed is not None:
             tasks = [t for t in tasks if t.completed == completed]
@@ -244,7 +267,19 @@ class Schedule:
         return "\n".join(lines)
 
     def detect_conflicts(self) -> list[str]:
-        """Check scheduled entries for time overlaps; return warning strings (never raises)."""
+        """Scan scheduled entries for time-window overlaps and return human-readable warnings.
+
+        Two entries conflict when their intervals overlap:
+            start_a < start_b + duration_b  AND  start_b < start_a + duration_a
+
+        Entries are sorted by start time before checking. The inner loop exits as
+        soon as a later entry starts at or after the current entry's end time,
+        keeping the check O(n log n + k) where k is the number of conflicts found.
+
+        Each warning string identifies both tasks, their pets, their start times,
+        and whether the conflict is within the same pet or across different pets.
+        Never raises; returns an empty list when the schedule is conflict-free.
+        """
         warnings = []
         entries = sorted(self.entries, key=lambda e: e[0])
         for i in range(len(entries)):

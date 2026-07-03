@@ -78,19 +78,39 @@ pytest --cov
 Sample test output:
 
 ```
-# Paste your pytest output here
+============================= test session starts ==============================
+platform darwin -- Python 3.13.1, pytest-9.1.1, pluggy-1.6.0
+collected 7 items
+
+tests/test_pawpal.py::test_mark_complete_changes_status PASSED           [ 14%]
+tests/test_pawpal.py::test_mark_complete_daily_spawns_next_task PASSED   [ 28%]
+tests/test_pawpal.py::test_mark_complete_weekly_spawns_next_task PASSED  [ 42%]
+tests/test_pawpal.py::test_mark_complete_non_recurring_returns_none PASSED [ 57%]
+tests/test_pawpal.py::test_mark_complete_without_pet_no_spawn PASSED     [ 71%]
+tests/test_pawpal.py::test_is_due_today_uses_due_date PASSED             [ 85%]
+tests/test_pawpal.py::test_add_task_increases_pet_task_count PASSED      [100%]
+
+============================== 7 passed in 0.02s ===============================
 ```
 
 ## 📐 Smarter Scheduling
 
-> Fill in once you've implemented scheduling logic.
+| Feature | Method(s) | Description |
+|---------|-----------|-------------|
+| **Time-ordered view** | `Schedule.sort_by_time()` | Returns all scheduled tasks sorted by assigned start time ascending. Useful for displaying the plan chronologically after `generate()` packs tasks by priority. |
+| **Task filtering** | `Schedule.filter_tasks(completed, pet_name)` | Filters scheduled tasks by completion status, pet name, or both combined. Passing `completed=False` shows what still needs doing; `pet_name="Biscuit"` narrows results to one pet's tasks. |
+| **Conflict detection** | `Schedule.detect_conflicts()` | Scans all scheduled entries for overlapping time windows and returns a list of human-readable warning strings — one per conflict — without raising. Labels each conflict as same-pet or different-pets. |
+| **Recurring tasks** | `Task.mark_complete()` | Marking a recurring task complete (`recurrence="daily"` or `"weekly"`) automatically creates and registers the next occurrence with its pet, advancing `due_date` by 1 or 7 days. |
 
-| Feature | Method(s) | Notes |
-|---------|-----------|-------|
-| Task sorting | | e.g., by priority, duration |
-| Filtering | | e.g., skip tasks if time runs out |
-| Conflict handling | | e.g., overlapping time slots |
-| Recurring tasks | | e.g., daily vs. weekly |
+### Conflict detection example
+
+Two tasks are forced to overlap (Biscuit's 60-min vet visit at 10:00 and Mochi's 45-min grooming at 10:20) to demonstrate the warning output:
+
+```
+Conflict Detection:
+----------------------------------------
+  WARNING: Conflict (different pets) — 'Vet checkup' for Biscuit @ 10:00 overlaps 'Grooming session' for Mochi @ 10:20
+```
 
 ## 📸 Demo Walkthrough
 

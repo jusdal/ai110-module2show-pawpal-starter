@@ -41,8 +41,11 @@ A review of the skeleton (before writing any logic) surfaced several refinements
 
 **b. Tradeoffs**
 
-- Describe one tradeoff your scheduler makes.
-- Why is that tradeoff reasonable for this scenario?
+`Schedule.generate()` uses a **greedy, priority-first placement strategy**: tasks are sorted once by priority (descending), and each task is placed at the earliest valid time slot — its `preferred_time` if that slot is free, otherwise the first gap that fits. Once a task is placed, that decision is never revisited.
+
+This means the scheduler can miss more globally efficient arrangements. For example: a high-priority 60-minute vet visit placed at 08:00 blocks two lower-priority 30-minute tasks that together have a smaller footprint and could have fit if the vet visit had been shifted to 09:00. A look-ahead or backtracking approach could find a better packing, but at the cost of significantly more complex code.
+
+This tradeoff is reasonable for a daily pet care planner for three reasons. First, the input scale is tiny — a typical owner has fewer than 20 tasks per day — so the difference between greedy and optimal is rarely observable in practice. Second, pet care tasks are not freely interchangeable: feeding a pet at 08:30 instead of 10:00 is a real preference, not an optimization variable, and the `preferred_time` field already captures that directly. Third, a greedy algorithm is transparent: users can predict what will happen (highest priority wins) and trust the plan rather than wondering why the scheduler moved a high-priority task to make room for lower-priority ones.
 
 ---
 
